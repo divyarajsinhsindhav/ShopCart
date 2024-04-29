@@ -12,61 +12,124 @@ fetchProduct().then(data => {
                     <h5 class="card-title">${product.name}</h5>
                     <h6 class="card-subtitle mb-2 text-muted">Price: $${product.price}</h6>
                     <p class="card-text">${product.description}</p>
-                    <button class="card-link" data-product-id="${product.id}">Add to cart</a>
+                    <div class="add-cart">
+                        <button class="card-link" data-product-id="${product.id}">Add to cart</button>
+                    </div>
                 </div>
             </div>
         `;
         // Add event listener to the "Add to cart" link
         const addToCartButton = card.querySelector('.card-link');
-        addToCartButton.addEventListener('click', () => addToCartClicked(product.id));
-        
+        addToCartButton.addEventListener('click', (event) => addToCartClicked(event, product.id));
+
+        const addCart = card.querySelector('.add-cart');
+        increaseDecrease(addCart, product.id)
         itemCard.appendChild(card);
     });
 }).catch(error => {
     console.error('Error fetching product data:', error);
-})
-
+});
 
 // Function to handle "Add to cart" button click
-const addToCartClicked = () => {
+const addToCartClicked = (event) => {
     event.preventDefault();
     const productId = event.target.getAttribute('data-product-id');
     fetchProduct().then(data => {
-        let cart_obj = JSON.parse(localStorage.getItem("cart")); 
+        let cartData = JSON.parse(localStorage.getItem("cart")); 
         // Update the cart data
-        if (!cart_obj) {
-            cart_obj = {
+        if (!cartData) {
+            cartData = {
                 "data": {
                     "quantity": 0,
                     "itemList": []
                 }
-            }
+            };
         }
-        cart_obj.data.quantity++;
-        const existingProduct = cart_obj.data.itemList.find(item => item.id === productId);
-        if(existingProduct) {
+        cartData.data.quantity++;
+        const existingProduct = cartData.data.itemList.find(item => item.id === productId);
+        if (existingProduct) {
             existingProduct.qty++;
         } else {
-            const object = {
-                "id": data[productId-1].id,
-                "name": data[productId-1].name,
-                "description": data[productId-1].description,
-                "price": data[productId-1].price,
-                "qty": 1,
+            const product = data.find(item => item.id === productId);
+            if (product) {
+                const newItem = {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "price": product.price,
+                    "qty": 1
+                };
+                cartData.data.itemList.push(newItem);
             }
-            cart_obj.data.itemList.push(object);
         }
         // Store the updated cart data in localStorage
-        localStorage.setItem("cart", JSON.stringify(cart_obj));
-
+        localStorage.setItem("cart", JSON.stringify(cartData));
         // Render the cart
-        renderCart();  
+        renderCart();
+    }).catch(error => {
+        console.error('Error fetching product data:', error);
     });
+}
+
+//Function to handle Increase & Decrease button in Item Card
+const increaseDecrease = (addCart, productId) => {
+    const cartData = JSON.parse(localStorage.getItem("cart"));
+    if (!cartData) {
+        console.error('Cart data not found in localStorage');
+        return;
+    }
+    const item = cartData.data.itemList.find(item => item.id === productId);
+    if (item) {
+        if (item.qty >= 1) {
+            addCart.innerHTML = `
+                <button class="btn btn-sm btn-primary decreaseQty mr-2" data-product-id="${productId}">-</button>
+                <span>${item.qty}</span>
+                <button class="btn btn-sm btn-primary increaseQty ml-2" data-product-id="${productId}">+</button>
+            `;
+            const increaseQty = addCart.querySelector('.increaseQty');
+            increaseQty.addEventListener('click', () => increase(productId));
+            const decreaseQty = addCart.querySelector('.decreaseQty');
+            decreaseQty.addEventListener('click', () => decrease(productId));
+        }
+    } else {
+        removeFromCart(productId);
+        const addToCartButton = addCart.querySelector('.card-link');
+        if (addToCartButton) {
+            addToCartButton.removeEventListener('click', (event) => addToCartClicked(event, productId));
+        }
+        addCart.innerHTML = `<button class="card-link" data-product-id="${productId}">Add to cart</button>`;
+        const newAddToCartButton = addCart.querySelector('.card-link');
+        newAddToCartButton.addEventListener('click', (event) => addToCartClicked(event, productId));
+    }
+}
+
+// Function to handle Increase button click
+const increase = (productId) => {
+    const cartData = JSON.parse(localStorage.getItem("cart"));
+    const item = cartData.data.itemList.find(item => item.id === productId);
+    if (item) {
+        item.qty++;
+        localStorage.setItem("cart", JSON.stringify(cartData));
+        renderCart();
+    }
+}
+
+// Function to handle Decrease button click
+const decrease = (productId) => {
+    const cartData = JSON.parse(localStorage.getItem("cart"));
+    const item = cartData.data.itemList.find(item => item.id === productId);
+    if (item && item.qty > 1) {
+        item.qty--;
+        localStorage.setItem("cart", JSON.stringify(cartData));
+        renderCart();
+    } else if (item && item.qty === 1) {
+        removeFromCart(cartData.data.itemList.indexOf(item));
+    }
 }
 
 // Function to handle "Remove from Cart" button click
 const removeFromCart = (itemIndex) => {
-    const cartData = JSON.parse(localStorage.cart);
+    const cartData = JSON.parse(localStorage.getItem("cart"));
     cartData.data.itemList.splice(itemIndex, 1);
     cartData.data.quantity--;
     localStorage.setItem("cart", JSON.stringify(cartData));
@@ -74,9 +137,8 @@ const removeFromCart = (itemIndex) => {
 }
 
 // Function to render the cart
-function renderCart() {
-    // Retrieve cart data from localStorage
-    const cartData = JSON.parse(localStorage.getItem("cart"));
+const renderCart = () => {
+    let cartData = JSON.parse(localStorage.getItem("cart"));
     const cartShow = document.querySelector('.cart-show');
     cartShow.innerHTML = '';
     if (cartData && cartData.data.itemList.length > 0) {
@@ -95,16 +157,12 @@ function renderCart() {
                 </li>`;
         });
     }
-    // Add event listeners to remove buttons
     const removeButtons = document.querySelectorAll('.remove-from-cart');
     removeButtons.forEach(button => {
-        // Retrieve the itemIndex from the data-product-index attribute
         const itemIndex = parseInt(button.getAttribute('data-product-index'));
         button.addEventListener('click', () => removeFromCart(itemIndex));
-        // console.log(itemIndex)
     });
 }
-
 
 // Immediately invoked function to render the cart when the page loads
 (function() {
